@@ -2,8 +2,8 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="9.00"
-	Name="InterestingFilesModule"
-	ProjectGUID="{00E3B0EE-B612-433A-A43E-1CE0B3DE1015}"
+	Name="SaveInterestingFilesModule"
+	ProjectGUID="{39CDF492-FCD0-42E8-B2E2-42D2E0F6D2CC}"
 	RootNamespace="EntropyModule"
 	TargetFrameworkVersion="196613"
 	>
