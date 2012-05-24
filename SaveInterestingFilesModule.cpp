@@ -71,7 +71,7 @@ extern "C"
                     LOGERROR(msg.str());
                     return TskModule::FAIL;
                 } else {
-                    msg << L"  SaveInterestingFiles Module: Initialized with argument: " << outputDir.c_str();
+                    msg << L"  SaveInterestingFiles Module: Results will be saved to: " << outputDir.c_str();
                     LOGINFO(msg.str());
                 }
             } catch (std::exception & ex) {
@@ -121,9 +121,9 @@ extern "C"
                     outputPath << outputDir << Poco::Path::separator() << fileRec.fileId << "_" << fileRec.name;
                     std::wstring wPath = TskUtilities::toUTF16(outputPath.str());
                     fileManager.copyFile(fileRec.fileId, wPath);
-                    msg.str(L"");
-                    msg << L"  SaveInterestingFiles Module: saved file: " << wPath;
-                    LOGINFO(msg.str());
+                    //msg.str(L"");
+                    //msg << L"  SaveInterestingFiles Module: saved file: " << wPath;
+                    //LOGINFO(msg.str());
                 } else {
                     msg.str(L"");
                     msg << L"  SaveInterestingFiles Module: getFileRecord failed for fileId = " << fileId;
