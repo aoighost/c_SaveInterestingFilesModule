@@ -47,7 +47,7 @@ extern "C"
         if (args.empty()) 
         {
             std::wstringstream msg;
-            msg << L"  SaveInterestingFiles Module: Missing output directory argument.";
+            msg << L"SaveInterestingFiles Module: Missing output directory argument.";
             LOGERROR(msg.str());
             return TskModule::FAIL;
         }
@@ -67,16 +67,16 @@ extern "C"
                 Poco::Path path(outputDir);
                 if (!(dirFile.isDirectory() && dirFile.canWrite())) {
                     std::wstringstream msg;
-                    msg << L"  SaveInterestingFiles Module: Failed to create directory: " << outputDir.c_str();
+                    msg << L"SaveInterestingFiles Module: Failed to create directory: " << outputDir.c_str();
                     LOGERROR(msg.str());
                     return TskModule::FAIL;
                 } else {
-                    msg << L"  SaveInterestingFiles Module: Results will be saved to: " << outputDir.c_str();
+                    msg << L"SaveInterestingFiles Module: Results will be saved to: " << outputDir.c_str();
                     LOGINFO(msg.str());
                 }
             } catch (std::exception & ex) {
                 std::wstringstream msg;
-                msg << L"  SaveInterestingFiles Module: Failed to create directory: " << outputDir.c_str() << " Exception: " << ex.what();
+                msg << L"SaveInterestingFiles Module: Failed to create directory: " << outputDir.c_str() << " Exception: " << ex.what();
                 LOGERROR(msg.str());
                 return TskModule::FAIL;
             }
@@ -97,11 +97,9 @@ extern "C"
 
         if (outputDir == "") 
         {
-            LOGERROR(L"  SaveInterestingFiles Module: OutputDir is empty.");
+            LOGERROR(L"SaveInterestingFiles Module: OutputDir is empty.");
             return TskModule::FAIL;
         }
-
-        LOGINFO(L"  SaveInterestingFiles Module: run");
 
         TskImgDB & imgdb = TskServices::Instance().getImgDB();
         TskFileManager& fileManager = TskServices::Instance().getFileManager();
@@ -109,7 +107,7 @@ extern "C"
         std::vector<TskBlackboardAttribute> attributes = blackboard.getAttributes(TSK_INTERESTING_FILE);
 
         std::wstringstream msg;
-        msg << "  SaveInterestingFiles Module: Found " << attributes.size() << " interesting files.";
+        msg << "SaveInterestingFiles Module: Found " << attributes.size() << " interesting files.";
         LOGINFO(msg.str());
 
         for (size_t i = 0; i < attributes.size(); i++) {
@@ -126,12 +124,12 @@ extern "C"
                     //LOGINFO(msg.str());
                 } else {
                     msg.str(L"");
-                    msg << L"  SaveInterestingFiles Module: getFileRecord failed for fileId = " << fileId;
+                    msg << L"SaveInterestingFiles Module: getFileRecord failed for fileId = " << fileId;
                     LOGERROR(msg.str());
                 }
             } catch (const std::exception& ex) {
                 std::wstringstream msg;
-                msg << L"  SaveInterestingFiles Module: exception: " << ex.what();
+                msg << L"SaveInterestingFiles Module: exception: " << ex.what();
                 LOGERROR(msg.str());
                 result = TskModule::FAIL;
             }
