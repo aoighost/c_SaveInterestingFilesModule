@@ -55,8 +55,14 @@ extern "C"
         {
             std::wstringstream msg;
             outputDir = args;
-            Poco::File dirFile(outputDir);
+            // strip off quotes if they were passed in via XML
+            if (outputDir[0] == '"')
+                outputDir.erase(0, 1);
+            if (outputDir[outputDir.size()-1] == '"')
+                outputDir.erase(outputDir.size()-1, 1);
+
             try {
+                Poco::File dirFile(outputDir);
                 dirFile.createDirectories();
                 Poco::Path path(outputDir);
                 if (!(dirFile.isDirectory() && dirFile.canWrite())) {
@@ -68,9 +74,9 @@ extern "C"
                     msg << L"  SaveInterestingFiles Module: Initialized with argument: " << outputDir.c_str();
                     LOGINFO(msg.str());
                 }
-            } catch (Poco::FileException & ex) {
+            } catch (std::exception & ex) {
                 std::wstringstream msg;
-                msg << L"  SaveInterestingFiles Module: Failed to create directory: " << outputDir.c_str() << " Exception: " << ex.displayText().c_str();
+                msg << L"  SaveInterestingFiles Module: Failed to create directory: " << outputDir.c_str() << " Exception: " << ex.what();
                 LOGERROR(msg.str());
                 return TskModule::FAIL;
             }
