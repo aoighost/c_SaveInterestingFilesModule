@@ -15,6 +15,7 @@
  */
 
 // System includes
+#include <string>
 #include <sstream>
 #include <fstream>
 #include <map>
@@ -33,17 +34,12 @@ static std::string outputDir;
 
 extern "C" 
 {
-    #ifdef _MSC_VER
-        #pragma warning( push )
-        #pragma warning( disable: 4190 )
-    #endif
- 
     /**
      * Module identification function. 
      *
      * @return The name of the module as a std::string.
      */
-    std::string name()
+    const char* name()
     {
         return "SaveInterestingFiles";
     }
@@ -53,7 +49,7 @@ extern "C"
      *
      * @return A description of the module as a std::string.
      */
-    std::string description()
+    const char* description()
     {
         return "";
     }
@@ -63,14 +59,10 @@ extern "C"
      *
      * @return The version of the module as a std::string.
      */
-    std::string version()
+    const char* version()
     {
         return "0.0.0";
     }
-
-    #ifdef _MSC_VER
-        #pragma warning( pop )
-    #endif
 
     /**
      * Module initialization function. Receives a string of intialization arguments, 
@@ -81,8 +73,10 @@ extern "C"
      * @param args Output directory path.
      * @return TskModule::OK if initialization succeeded, otherwise TskModule::FAIL.
      */
-    TskModule::Status TSK_MODULE_EXPORT initialize(std::string& args)
+    TskModule::Status TSK_MODULE_EXPORT initialize(const char*  arguments)
     {
+        std::string args(arguments);
+
         if (args.empty()) 
         {
             std::wstringstream msg;
