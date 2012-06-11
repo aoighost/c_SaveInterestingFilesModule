@@ -9,28 +9,123 @@
  */
 
 /** \file InterestingFiles.cpp
- * This file contains the implementation of the save interesting files module.
- * The module saves interesting files recorded on the blackboard to
- * a user-specified output directory.
+ * This file contains the implementation of a module that saves interesting 
+ * files recorded on the blackboard to a user-specified output directory.
  */
 
 // System includes
 #include <string>
 #include <sstream>
-#include <fstream>
-#include <map>
+#include <vector>
 
 // Framework includes
 #include "TskModuleDev.h"
 
 // Poco includes
-#include "Poco/FileStream.h"
-#include "Poco/AutoPtr.h"
-#include "Poco/UnicodeConverter.h"
 #include "Poco/Path.h"
 #include "Poco/File.h"
+#include "Poco/Exception.h"
 
-static std::string outputDir;
+namespace
+{
+    // The interesting files will be saved to this location. The path is passed to
+    // the module as an argument to the initialize() module API and cached here 
+    // for use in the report() module API.
+    std::string outputFolderPath;
+
+    // Helper function to create a directory. Throws TskException on failure.
+    void createDirectory(const std::string &path)
+    {
+        try
+        {
+            Poco::File dir(path);
+            dir.createDirectories();
+        } 
+        catch (Poco::Exception &ex) 
+        {
+            std::stringstream msg;
+            msg << L"SaveInterestingFilesModule failed to create directory '" << outputFolderPath << "' : " << ex.message();
+            throw TskException(msg.str());
+        }
+    }
+
+    // Helper function to recursively write out the contents of a directory. Throws TskException on failure.
+    void saveDirectoryContents(const std::wstring &dirPath, uint64_t dirFileId)
+    {
+        // Construct a query for the file records corresponding to the files in the directory and fetch them.
+        std::stringstream condition; 
+        condition << "WHERE par_file_id = " << dirFileId;
+        std::vector<const TskFileRecord> files = TskServices::Instance().getImgDB().getFileRecords(condition.str());
+
+        // Save each file and subdirectory in the directory.
+        for (std::vector<const TskFileRecord>::const_iterator file = files.begin(); file != files.end(); ++file)
+        {
+            if ((*file).metaType == TSK_FS_META_TYPE_DIR)
+            {
+                // Create a subdirectory to hold the contents of this subdirectory.
+                std::wstringstream subDirPath;
+                subDirPath << dirPath << Poco::Path::separator() << (*file).name.c_str();
+                createDirectory(TskUtilities::toUTF8(subDirPath.str()));
+
+                // Recurse into the subdirectory.
+                saveDirectoryContents(subDirPath.str(), (*file).fileId);
+            }
+            else
+            {
+                // Save the file.
+                std::wstringstream filePath;
+                filePath << dirPath << Poco::Path::separator() << (*file).name.c_str();
+                TskServices::Instance().getFileManager().copyFile((*file).fileId, filePath.str());
+            }
+        }
+    }
+
+    // Helper function to save the contents of an interesting directory to the output folder. Throws TskException on failure.
+    void saveInterestingDirectory(const TskFileRecord &dir, const std::string &setName)
+    {
+        // Make a subdirectory of the output folder named for the interesting file search set and create a further subdirectory
+        // corresponding to the directory to be saved. The resulting directory structure will look like this:
+        // <output folder>/
+        //      <interesting file set name>/
+        //          <file id>_<directory name>/ /*Prefix the directory with its its file id to ensure uniqueness*/
+        //              <directory name>/
+        //                  <contents of directory including subdirectories>
+        //
+        std::wstringstream path;
+        path << outputFolderPath.c_str() << Poco::Path::separator() 
+             << setName.c_str() << Poco::Path::separator() 
+             << dir.fileId << L"_" << dir.name.c_str() << Poco::Path::separator() 
+             << dir.name.c_str();
+        createDirectory(TskUtilities::toUTF8(path.str()));
+
+        saveDirectoryContents(path.str(), dir.fileId);
+
+        // Log the result.
+        std::wstringstream msg;
+        msg << L"SaveInterestingFilesModule saved directory to '" << path.str() << L"'";
+        LOGINFO(msg.str());
+    }
+
+    // Helper function to save the contents of an interesting file to the output folder. Throws TskException on failure.
+    void saveInterestingFile(const TskFileRecord &file, const std::string &setName)
+    {
+        // Construct a path to write the contents of the file to a subdirectory of the output folder named for the interesting file search
+        // set. The resulting directory structure will look like this:
+        // <output folder>/
+        //      <interesting file set name>/
+        //          <file id>_<file name> /*Prefix the file with its its file id to ensure uniqueness*/
+        std::wstringstream path;
+        path << outputFolderPath.c_str() << Poco::Path::separator() 
+             << setName.c_str() << Poco::Path::separator() 
+             << file.fileId << L"_" << file.name.c_str();
+        TskServices::Instance().getFileManager().copyFile(file.fileId, path.str());
+
+        // Log the result.
+        std::wstringstream msg;
+        msg << L"SaveInterestingFilesModule saved file to '" << path.str().c_str() << L"'";
+        LOGINFO(msg.str());
+    }
+}
 
 extern "C" 
 {
@@ -65,118 +160,120 @@ extern "C"
     }
 
     /**
-     * Module initialization function. Receives a string of intialization arguments, 
-     * typically read by the caller from a pipeline configuration file. 
-     * Returns TskModule::OK or TskModule::FAIL. Returning TskModule::FAIL indicates 
-     * the module is not in an operational state.  
+     * Module initialization function. Receives an output folder path as the location
+     * for saving the files corresponding to interesting file set hits.
      *
-     * @param args Output directory path.
-     * @return TskModule::OK if initialization succeeded, otherwise TskModule::FAIL.
+     * @param args Output folder path.
+     * @return TskModule::OK 
      */
-    TskModule::Status TSK_MODULE_EXPORT initialize(const char*  arguments)
+    TSK_MODULE_EXPORT TskModule::Status initialize(const char* arguments)
     {
-        std::string args(arguments);
+        // Reset the output folder path in case initialize() is called more than once.
+        outputFolderPath.clear();
 
-        if (args.empty()) 
+        std::wstringstream msg;
+        if (arguments != NULL)
         {
-            std::wstringstream msg;
-            msg << L"SaveInterestingFiles Module: Missing output directory argument.";
-            LOGERROR(msg.str());
-            return TskModule::FAIL;
+            outputFolderPath = arguments;
+            if (!outputFolderPath.empty()) 
+            {
+                msg << L"SaveInterestingFilesModule initialized with output folder path " << outputFolderPath.c_str();
+                LOGINFO(msg.str());
+
+            }
+            else
+            {
+                msg << L"SaveInterestingFilesModule received empty output directory argument";
+                LOGERROR(msg.str());
+            }
         }
         else
         {
-            std::wstringstream msg;
-            outputDir = args;
-            // strip off quotes if they were passed in via XML
-            if (outputDir[0] == '"')
-                outputDir.erase(0, 1);
-            if (outputDir[outputDir.size()-1] == '"')
-                outputDir.erase(outputDir.size()-1, 1);
-
-            try {
-                Poco::File dirFile(outputDir);
-                dirFile.createDirectories();
-                Poco::Path path(outputDir);
-                if (!(dirFile.isDirectory() && dirFile.canWrite())) {
-                    std::wstringstream msg;
-                    msg << L"SaveInterestingFiles Module: Failed to create directory: " << outputDir.c_str();
-                    LOGERROR(msg.str());
-                    return TskModule::FAIL;
-                } else {
-                    msg << L"SaveInterestingFiles Module: Results will be saved to: " << outputDir.c_str();
-                    LOGINFO(msg.str());
-                }
-            } catch (std::exception & ex) {
-                std::wstringstream msg;
-                msg << L"SaveInterestingFiles Module: Failed to create directory: " << outputDir.c_str() << " Exception: " << ex.what();
-                LOGERROR(msg.str());
-                return TskModule::FAIL;
-            }
+            msg << L"SaveInterestingFilesModule received NULL output directory argument";
+            LOGERROR(msg.str());
         }
+
+        // Always return OK when initializing a reporting/post-processing pipeline module 
+        // so the pipeline is not disabled by the presence of a non-functional module.
         return TskModule::OK;
     }
 
     /**
-     * Module execution function. Returns TskModule::OK, TskModule::FAIL, or TskModule::STOP. 
-     * Returning TskModule::FAIL indicates error performing its job. Returning TskModule::STOP
-     * is a request to terminate execution of the reporting pipeline.
+     * Module execution function. saves interesting files recorded on the 
+     * blackboard to a user-specified output directory.
      *
-     * @returns TskModule::OK on success, TskModule::FAIL on error, or TskModule::STOP.
+     * @returns TskModule::OK on success if all files saved, TskModule::FAIL if one or more files were not saved
      */
-    TskModule::Status TSK_MODULE_EXPORT report()
+    TSK_MODULE_EXPORT TskModule::Status report()
     {
-        TskModule::Status result = TskModule::OK;
+        TskModule::Status returnCode = TskModule::OK;
+        
+        LOGINFO(L"SaveInterestingFilesModule save operations started");
 
-        if (outputDir == "") 
+        try
         {
-            LOGERROR(L"SaveInterestingFiles Module: OutputDir is empty.");
-            return TskModule::FAIL;
-        }
-
-        TskImgDB & imgdb = TskServices::Instance().getImgDB();
-        TskFileManager& fileManager = TskServices::Instance().getFileManager();
-        TskBlackboard & blackboard = TskServices::Instance().getBlackboard();
-        std::vector<TskBlackboardAttribute> attributes = blackboard.getAttributes(TSK_INTERESTING_FILE);
-
-        std::wstringstream msg;
-        msg << "SaveInterestingFiles Module: Found " << attributes.size() << " interesting files.";
-        LOGINFO(msg.str());
-
-        for (size_t i = 0; i < attributes.size(); i++) {
-            try {
-                uint64_t fileId = attributes[i].getParentArtifact().getObjectID();
-                TskFileRecord fileRec;
-                if (imgdb.getFileRecord(fileId, fileRec) != -1) {
-                    std::stringstream outputPath;
-                    outputPath << outputDir << Poco::Path::separator() << fileRec.fileId << "_" << fileRec.name;
-                    std::wstring wPath = TskUtilities::toUTF16(outputPath.str());
-                    fileManager.copyFile(fileRec.fileId, wPath);
-                    //msg.str(L"");
-                    //msg << L"  SaveInterestingFiles Module: saved file: " << wPath;
-                    //LOGINFO(msg.str());
-                } else {
-                    msg.str(L"");
-                    msg << L"SaveInterestingFiles Module: getFileRecord failed for fileId = " << fileId;
-                    LOGERROR(msg.str());
+            // Make the output directory specified using the initialize() API.
+            createDirectory(outputFolderPath);
+            
+            // Get the interesting file hit artifacts from the blackboard and save the corresponding files to the output directory.
+            std::vector<TskBlackboardArtifact> files = TskServices::Instance().getBlackboard().getArtifacts(TSK_INTERESTING_FILE_HIT);
+            for (std::vector<TskBlackboardArtifact>::iterator artifact = files.begin(); artifact != files.end(); ++artifact)
+            {
+                try
+                {
+                    // Get the file record corresponding to the hit.
+                    TskFileRecord file;
+                    if (TskServices::Instance().getImgDB().getFileRecord((*artifact).getObjectID(), file) == -1)
+                    {
+                        std::stringstream msg;
+                        msg << "SaveInterestingFilesModule failed to get file record for file Id = " << (*artifact).getObjectID() << ", cannot save file";
+                        throw TskException(msg.str());
+                    }
+                    
+                    // Get the set name attibute from the artifact and save the file corresponding to the hit to a subdirectory of the output folder
+                    // bearing the name of the interesting files set.
+                    std::vector<TskBlackboardAttribute> attrs = (*artifact).getAttributes();
+                    for (std::vector<TskBlackboardAttribute>::iterator attr = attrs.begin(); attr != attrs.end(); ++attr)
+                    {
+                        if ((*attr).getAttributeTypeID() == TSK_SET_NAME)
+                        {
+                            if (file.metaType == TSK_FS_META_TYPE_DIR)
+                            {
+                                 saveInterestingDirectory(file, (*attr).getValueString()); 
+                            }
+                            else
+                            {
+                                saveInterestingFile(file, (*attr).getValueString());
+                            }
+                        }
+                    }
                 }
-            } catch (const std::exception& ex) {
-                std::wstringstream msg;
-                msg << L"SaveInterestingFiles Module: exception: " << ex.what();
-                LOGERROR(msg.str());
-                result = TskModule::FAIL;
+                catch(TskException &ex)
+                {
+                    // Log the error and try the next file hit, but signal that an error occurred with a FAIL return code.
+                    LOGERROR(TskUtilities::toUTF16(ex.message()));
+                    returnCode = TskModule::FAIL;
+                }
             }
         }
-        return result;
+        catch(TskException &ex)
+        {
+            LOGERROR(TskUtilities::toUTF16(ex.message()));
+            returnCode = TskModule::FAIL;
+        }
+
+        LOGINFO(L"SaveInterestingFilesModule save operations finished");
+        
+        return returnCode;
     }
 
     /**
-     * Module cleanup function. This is where the module should free any resources 
+     * Module cleanup function. This imodule does not need to free any resources 
      * allocated during initialization or execution.
      *
-     * @returns TskModule::OK on success and TskModule::FAIL on error.
+     * @returns TskModule::OK
      */
-    TskModule::Status TSK_MODULE_EXPORT finalize()
+    TSK_MODULE_EXPORT TskModule::Status finalize()
     {
         return TskModule::OK;
     }
