@@ -67,12 +67,12 @@ namespace
     }
 
     // Helper function to add a saved file or directory to a saved files report. 
-    void addFileToReport(const TskFileRecord &file, const std::string &filePath, Poco::XML::Document *report)
+    void addFileToReport(const TskFile &file, const std::string &filePath, Poco::XML::Document *report)
     {
         Poco::XML::Element *reportRoot = static_cast<Poco::XML::Element*>(report->firstChild());
 
         Poco::AutoPtr<Poco::XML::Element> fileElement; 
-        if (file.metaType == TSK_FS_META_TYPE_DIR)
+        if (file.getMetaType() == TSK_FS_META_TYPE_DIR)
         {
             fileElement = report->createElement("SavedDirectory");
         }
@@ -89,66 +89,55 @@ namespace
 
         Poco::AutoPtr<Poco::XML::Element> originalPathElement = report->createElement("OriginalPath");        
         fileElement->appendChild(originalPathElement);
-        std::stringstream originalPath;
-        if (file.metaType != TSK_FS_META_TYPE_DIR && file.typeId == TskImgDB::IMGDB_FILES_TYPE_CARVED)
-        {
-            originalPath << "Carved/" << file.fullPath;
-        }
-        else
-        {
-            uint64_t fileSystemSectorOffset = 0;
-            uint64_t unusedUint = 0;
-            int unusedInt = 0;
-            TskServices::Instance().getImgDB().getFileUniqueIdentifiers(file.fileId, fileSystemSectorOffset, unusedUint, unusedInt, unusedInt);
-            originalPath << "FsOffset" << fileSystemSectorOffset << "/" << file.fullPath;
-        }
-        Poco::AutoPtr<Poco::XML::Text> originalPathText = report->createTextNode(originalPath.str());
+        Poco::AutoPtr<Poco::XML::Text> originalPathText = report->createTextNode(file.getUniquePath());
         originalPathElement->appendChild(originalPathText);
 
-        if (file.metaType != TSK_FS_META_TYPE_DIR)
+        if (file.getMetaType() != TSK_FS_META_TYPE_DIR)
         {
             // This element will be empty unless a hash calculation module has operated on the file.
             Poco::AutoPtr<Poco::XML::Element> md5HashElement = report->createElement("MD5");        
             fileElement->appendChild(md5HashElement);                
-            Poco::AutoPtr<Poco::XML::Text> md5HashText = report->createTextNode(file.md5);
+            Poco::AutoPtr<Poco::XML::Text> md5HashText = report->createTextNode(file.getHash(TskImgDB::MD5));
             md5HashElement->appendChild(md5HashText);
         }
     }
 
     // Helper function to recursively write out the contents of a directory. Throws TskException on failure.
-    void saveDirectoryContents(const std::string &dirPath, uint64_t dirFileId, Poco::XML::Document *report)
+    void saveDirectoryContents(const std::string &dirPath, const TskFile &dir, Poco::XML::Document *report)
     {
         // Construct a query for the file records corresponding to the files in the directory and fetch them.
         std::stringstream condition; 
-        condition << "WHERE par_file_id = " << dirFileId;
-        std::vector<const TskFileRecord> files = TskServices::Instance().getImgDB().getFileRecords(condition.str());
+        condition << "WHERE par_file_id = " << dir.getId();
+        std::vector<const TskFileRecord> fileRecs = TskServices::Instance().getImgDB().getFileRecords(condition.str());
 
         // Save each file and subdirectory in the directory.
-        for (std::vector<const TskFileRecord>::const_iterator file = files.begin(); file != files.end(); ++file)
+        for (std::vector<const TskFileRecord>::const_iterator fileRec = fileRecs.begin(); fileRec != fileRecs.end(); ++fileRec)
         {
-            if ((*file).metaType == TSK_FS_META_TYPE_DIR)
+            std::auto_ptr<TskFile> file(TskServices::Instance().getFileManager().getFile((*fileRec).fileId));
+
+            if (file->getMetaType() == TSK_FS_META_TYPE_DIR)
             {
                 // Create a subdirectory to hold the contents of this subdirectory.
                 std::stringstream subDirPath;
-                subDirPath << dirPath << Poco::Path::separator() << (*file).name;
+                subDirPath << dirPath << Poco::Path::separator() << file->getName();
                 createDirectory(subDirPath.str());
 
                 // Recurse into the subdirectory.
-                saveDirectoryContents(subDirPath.str(), (*file).fileId, report);
+                saveDirectoryContents(subDirPath.str(), *file, report);
             }
             else
             {
                 // Save the file.
                 std::stringstream filePath;
-                filePath << dirPath << Poco::Path::separator() << (*file).name;
-                TskServices::Instance().getFileManager().copyFile((*file).fileId, TskUtilities::toUTF16(filePath.str()));
-                addFileToReport((*file), filePath.str(), report);
+                filePath << dirPath << Poco::Path::separator() << file->getName();
+                TskServices::Instance().getFileManager().copyFile(file.get(), TskUtilities::toUTF16(filePath.str()));
+                addFileToReport(*file, filePath.str(), report);
             }
         }
     }
 
     // Helper function to save the contents of an interesting directory to the output folder. Throws TskException on failure.
-    void saveInterestingDirectory(const TskFileRecord &dir, const std::string &fileSetFolderPath, Poco::XML::Document *report)
+    void saveInterestingDirectory(const TskFile &dir, const std::string &fileSetFolderPath, Poco::XML::Document *report)
     {
         // Make a subdirectory of the output folder named for the interesting file search set and create a further subdirectory
         // corresponding to the directory to be saved. The resulting directory structure will look like this:
@@ -159,25 +148,25 @@ namespace
         //                  <contents of directory including subdirectories>
         //
         std::stringstream path;
-        path << fileSetFolderPath << Poco::Path::separator() << dir.name << '_' << dir.fileId << Poco::Path::separator() << dir.name;
+        path << fileSetFolderPath << Poco::Path::separator() << dir.getName() << '_' << dir.getId() << Poco::Path::separator() << dir.getName();
         createDirectory(path.str());
 
         addFileToReport(dir, path.str(), report);
 
-        saveDirectoryContents(path.str(), dir.fileId, report);
+        saveDirectoryContents(path.str(), dir, report);
     }
 
     // Helper function to save the contents of an interesting file to the output folder. Throws TskException on failure.
-    void saveInterestingFile(const TskFileRecord &file, const std::string &fileSetFolderPath, Poco::XML::Document *report)
+    void saveInterestingFile(const TskFile &file, const std::string &fileSetFolderPath, Poco::XML::Document *report)
     {
         // Construct a path to write the contents of the file to a subdirectory of the output folder named for the interesting file search
         // set. The resulting directory structure will look like this:
         // <output folder>/
         //      <interesting file set name>/
         //          <file name>_<fileId>.<ext> /*Suffix the file with its its file id to ensure uniqueness*/
-        std::string fileName = file.name;
+        std::string fileName = file.getName();
         std::stringstream id;
-        id << '_' << file.fileId;
+        id << '_' << file.getId();
         std::string::size_type pos = 0;
         if ((pos = fileName.rfind(".")) != std::string::npos && pos != 0)
         {
@@ -194,7 +183,7 @@ namespace
         filePath << fileSetFolderPath.c_str() << Poco::Path::separator() << fileName.c_str();
     
         // Save the file.
-        TskServices::Instance().getFileManager().copyFile(file.fileId, TskUtilities::toUTF16(filePath.str()));
+        TskServices::Instance().getFileManager().copyFile(file.getId(), TskUtilities::toUTF16(filePath.str()));
 
         addFileToReport(file, filePath.str(), report);
     }
@@ -214,27 +203,19 @@ namespace
         fileSetFolderPath << outputFolderPath << Poco::Path::separator() << setName;
         createDirectory(fileSetFolderPath.str());
         
+        // Save all of the files in the set.
         for (FileSetHits::iterator fileHit = fileSetHitsRange.first; fileHit != fileSetHitsRange.second; ++fileHit)
         {
             try
             {
-                // Get the file record corresponding to the hit.
-                TskBlackboardArtifact hit = (*fileHit).second;
-                TskFileRecord file;
-                if (TskServices::Instance().getImgDB().getFileRecord(hit.getObjectID(), file) == -1)
+                std::auto_ptr<TskFile> file(TskServices::Instance().getFileManager().getFile((*fileHit).second.getObjectID()));
+                if (file->getMetaType() == TSK_FS_META_TYPE_DIR)
                 {
-                    std::stringstream msg;
-                    msg << "SaveInterestingFilesModule failed to get file record for file Id = " << hit.getObjectID() << ", cannot save file"; 
-                    throw TskException(msg.str());
-                }
-                
-                if (file.metaType == TSK_FS_META_TYPE_DIR)
-                {
-                     saveInterestingDirectory(file, fileSetFolderPath.str(), report); 
+                     saveInterestingDirectory(*file, fileSetFolderPath.str(), report); 
                 }
                 else
                 {
-                    saveInterestingFile(file, fileSetFolderPath.str(), report);
+                    saveInterestingFile(*file, fileSetFolderPath.str(), report);
                 }
             }
             catch(TskException &ex)
