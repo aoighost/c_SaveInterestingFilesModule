@@ -280,30 +280,18 @@ extern "C"
         // Reset the output folder path in case initialize() is called more than once.
         outputFolderPath.clear();
 
-        std::wstringstream msg;
         if (arguments != NULL)
         {
             outputFolderPath = arguments;
-            if (!outputFolderPath.empty()) 
-            {
-                msg << L"SaveInterestingFilesModule initialized with output folder path " << outputFolderPath.c_str();
-                LOGINFO(msg.str());
-
-            }
-            else
-            {
-                msg << L"SaveInterestingFilesModule received empty output directory argument";
-                LOGERROR(msg.str());
-            }
         }
-        else
+
+        if (outputFolderPath.empty())
         {
-            msg << L"SaveInterestingFilesModule received NULL output directory argument";
-            LOGERROR(msg.str());
+            std::stringstream pathBuilder;
+            pathBuilder << "#OUT_DIR#" << Poco::Path::separator() << "InterestingFiles";
+            outputFolderPath = ExpandSystemPropertyMacros(pathBuilder.str());
         }
 
-        // Always return OK when initializing a reporting/post-processing pipeline module 
-        // so the pipeline is not disabled by the presence of a non-functional module.
         return TskModule::OK;
     }
 
