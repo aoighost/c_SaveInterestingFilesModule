@@ -10,7 +10,7 @@ DESCRIPTION
 
 This module is a reporting module that saves files and directories
 that were flagged as being interesting by the InterestingFiles module. 
-It is used to extract the suspicious files for further anlaysis.
+It is used to extract the suspicious files for further analysis.
 For example, you could use InterestingFiles to flag all files of
 a given type and then use this module to save them to a local
 folder for manual analysis. 
