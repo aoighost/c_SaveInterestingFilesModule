@@ -255,7 +255,7 @@ extern "C"
      */
     TSK_MODULE_EXPORT const char *description()
     {
-        return "";
+        return "Saves files and directories that were flagged as being interesting to a location for further analysis";
     }
 
     /**
