@@ -260,9 +260,9 @@ extern "C"
         try
         {
             Poco::Path outputDirPath;
-            if (arguments != NULL)
+            if (strlen(arguments) != 0)
             {
-                outputDirPath = Poco::Path::forDirectory(ExpandSystemPropertyMacros(arguments));
+                outputDirPath = Poco::Path::forDirectory(arguments);
             }
             else
             {
