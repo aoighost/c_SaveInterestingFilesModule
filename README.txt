@@ -8,17 +8,20 @@ This module is for the C++ Sleuth Kit Framework.
 
 DESCRIPTION
 
-This module is a reporting module that saves files and directories
+This module is a post-processing module that saves files and directories
 that were flagged as being interesting by the InterestingFiles module. 
 It is used to extract the suspicious files for further analysis.
 For example, you could use InterestingFiles to flag all files of
 a given type and then use this module to save them to a local
 folder for manual analysis. 
 
+DEPLOYMENT REQUIREMENTS
+
+This module does not have any specific deployment requirements.
 
 USAGE
 
-Add this module to a post-processing/reporting pipeline.  See the TSK 
+Add this module to a post-processing pipeline.  See the TSK 
 Framework documents for information on adding the module 
 to the pipeline:
 
