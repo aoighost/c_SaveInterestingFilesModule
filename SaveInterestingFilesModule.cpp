@@ -38,6 +38,8 @@
 #include <set>
 #include <map>
 #include <iostream>
+#include <memory>
+#include <string.h>
 
 namespace
 {
@@ -91,10 +93,10 @@ namespace
         // Construct a query for the file records corresponding to the files in the directory and fetch them.
         std::stringstream condition; 
         condition << "WHERE par_file_id = " << dir.getId();
-        std::vector<const TskFileRecord> fileRecs = TskServices::Instance().getImgDB().getFileRecords(condition.str());
+        const std::vector<TskFileRecord> fileRecs = TskServices::Instance().getImgDB().getFileRecords(condition.str());
 
         // Save each file and subdirectory in the directory.
-        for (std::vector<const TskFileRecord>::const_iterator fileRec = fileRecs.begin(); fileRec != fileRecs.end(); ++fileRec)
+        for (std::vector<TskFileRecord>::const_iterator fileRec = fileRecs.begin(); fileRec != fileRecs.end(); ++fileRec)
         {
             std::auto_ptr<TskFile> file(TskServices::Instance().getFileManager().getFile((*fileRec).fileId));
 
@@ -267,7 +269,7 @@ extern "C"
             else
             {
                 outputDirPath = Poco::Path::forDirectory(GetSystemProperty(TskSystemProperties::MODULE_OUT_DIR));
-                outputDirPath.pushDirectory(name());
+                outputDirPath.pushDirectory(MODULE_NAME);
             }
             outputFolderPath = outputDirPath.toString();
 
